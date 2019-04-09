@@ -1,0 +1,95 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+Rscript -e "rmarkdown::render('DE_Analysis.Rmd')"
+```{r loading packages}
+library(wrapr)
+library(data.table)
+library(Biobase)
+library(limma)
+rm(list=ls())
+```
+
+
+
+Functions for DE
+```{r Functions for DE}
+# subsetting expressionset by comparison groups
+exprset_subset <- function(expressionset, comparison_groups){
+  expressionset[, expressionset$severity == comparison_groups[1] | expressionset$severity == comparison_groups[2]]
+}
+
+
+# DE Analysis
+de_analysis <- function(expressionset, contrast, treatment_column){ 
+# making design matrix
+design <- model.matrix(~ 0 + factor(expressionset[[treatment_column]]))
+colnames(design) <- levels(factor(expressionset[[treatment_column]]))
+
+# making contrast matrix
+ctrst <- makeContrasts(contrasts = contrast, levels = design)
+
+# de analyis
+fit <- lmFit(expressionset, design)
+fit_2 <- contrasts.fit(fit, ctrst)
+fit_2 <- eBayes(fit_2)
+
+# saving the results
+res <- topTable(fit_2, n = Inf)
+}
+```
+
+
+
+Reading expressionsets
+```{r Reading expressionsets}
+exprset_path <- paste0("/sc/orga/projects/zhangb03a/lei_guo/Expressionset_MSBB_ROSMAP_Mayo/Expressionset/", c("Exprset.BM_10.PMI_race_sex_RIN_exonicRate_rRnaRate_batch_adj.RDS", "Exprset.BM_22.PMI_race_sex_RIN_exonicRate_rRnaRate_batch_adj.RDS", "Exprset.BM_36.PMI_race_sex_RIN_exonicRate_rRnaRate_batch_adj.RDS", "Exprset.BM_44.PMI_race_sex_RIN_exonicRate_rRnaRate_batch_adj.RDS", "Exprset.ROSMAP_log2FPKM.batch_pmi_msex_RIN_adj.no_outliers.symbol_clean.RDS"))
+
+exprset_ls <- lapply(exprset_path, readRDS)
+names(exprset_ls) <- c("BM10", "BM22", "BM36", "BM44", "ROSMAP")
+
+# imputing NA in the severity column of ROSMAP
+pData(exprset_ls$ROSMAP)[is.na(pData(exprset_ls$ROSMAP)$severity), ]$severity <- "MCI"
+```
+
+
+Subsetting the expressionset
+```{r Subsetting the expressionset}
+# for MCI and NL
+exprset_mci_nl <- lapply(exprset_ls, exprset_subset, comparison_groups = c("MCI", "NL"))
+
+# for Severe and MCI
+exprset_sev_mci <- lapply(exprset_ls, exprset_subset, comparison_groups = c("Severe", "MCI"))
+
+# for Severe and NL
+exprset_sev_nl <- lapply(exprset_ls, exprset_subset, comparison_groups = c("Severe", "NL"))
+```
+
+
+
+DE analysis
+```{r DE analysis}
+# for MCI and NL
+deg_mci_nl <- lapply(exprset_mci_nl, de_analysis, contrast = "MCI-NL", treatment_column = "severity")
+
+# for Severe and MCI
+deg_sev_mci <- lapply(exprset_sev_mci, de_analysis, contrast = "Severe-MCI", treatment_column = "severity")
+
+# for Severe and NL
+deg_sev_nl <- lapply(exprset_sev_nl, de_analysis, contrast = "Severe-NL", treatment_column = "severity")
+```
+
+
+
+Saving results
+```{r Saving results}
+invisible(mapply(fwrite, deg_mci_nl, paste0("/sc/orga/projects/zhangb03a/lei_guo/DE_analysis/NL_MCI_Severe/MCI_NL/", c("DEG_MCI_NL_BM10.csv", "DEG_MCI_NL_BM22.csv", "DEG_MCI_NL_BM36.csv", "DEG_MCI_NL_BM44.csv", "DEG_MCI_NL_ROSMAP.csv"))))
+
+invisible(mapply(fwrite, deg_sev_mci, paste0("/sc/orga/projects/zhangb03a/lei_guo/DE_analysis/NL_MCI_Severe/Severe_MCI/", c("DEG_Severe_MCI_BM10.csv", "DEG_Severe_MCI_BM22.csv", "DEG_Severe_MCI_BM36.csv", "DEG_Severe_MCI_BM44.csv", "DEG_Severe_MCI_ROSMAP.csv"))))
+
+invisible(mapply(fwrite, deg_sev_nl, paste0("/sc/orga/projects/zhangb03a/lei_guo/DE_analysis/NL_MCI_Severe/Severe_NL/", c("DEG_Severe_NL_BM10.csv", "DEG_Severe_NL_BM22.csv", "DEG_Severe_NL_BM36.csv", "DEG_Severe_NL_BM44.csv", "DEG_Severe_NL_ROSMAP.csv"))))
+```
+
